@@ -243,12 +243,24 @@ body {
   transform: scale(0.98);
 }
 
-/* Скрываем старую кнопку старт, так как теперь старт из попапа */
 .btn-start {
   display: none !important; 
 }
 
-/* POPUP BUTTON (NEW) */
+/* ERROR MESSAGE STYLE (NEW) */
+#error-msg {
+    color: var(--danger);
+    font-weight: 700;
+    text-align: center;
+    padding: 10px;
+    background: rgba(255, 71, 87, 0.1);
+    border-radius: 15px;
+    border: 1px solid rgba(255, 71, 87, 0.3);
+    margin-top: 10px;
+    display: none; /* Скрыто по умолчанию */
+}
+
+/* POPUP BUTTON */
 .btn-popup {
     background: var(--accent-green);
     color: white;
