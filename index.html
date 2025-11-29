@@ -4,17 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>AI Route Planner</title>
-
-  <!-- Fonts & Icons -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.0/css/all.min.css">
-
-  <!-- LEAFLET -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-  <!-- Подключение CSS -->
   <link rel="stylesheet" href="css/style-index.css">
 </head>
 
@@ -38,7 +32,6 @@
 
     <div class="bottom-container pointer-auto">
 
-      <!-- Transport Container -->
       <div id="transport-container">
         <div class="selector-label" data-i18n="transport">Transport</div>
         <div class="selector-row">
@@ -55,7 +48,6 @@
         <div class="choice-btn" data-cat="type" data-val="hidden_gems"><i class="fas fa-mask"></i> <span data-i18n="hidden">Hidden</span></div>
       </div>
 
-      <!-- RADIUS INPUT (Новое) -->
       <div id="radius-container" class="radius-container">
           <div class="radius-label"><i class="fas fa-ruler-combined"></i> Search Radius (km)</div>
           <input type="number" id="radius-input" value="5" min="1" max="500">
@@ -65,14 +57,14 @@
         <i class="fas fa-magic"></i> <span data-i18n="create">Create AI Route</span>
       </button>
 
-      <button class="btn-create btn-start" id="start-btn" style="display: none;">
-        <i class="fas fa-play"></i> <span data-i18n="start">Start Route</span>
-      </button>
+      <!-- Эта кнопка теперь только подсказка, действия происходят на карте -->
+      <div id="hint-msg" style="display:none; color:#00b894; font-weight:600; text-align:center; padding:10px;">
+          <i class="fas fa-hand-pointer"></i> Click on a marker to Start!
+      </div>
 
     </div>
   </div>
 
-  <!-- Подключение логики -->
   <script type="module" src="js/app-index.js"></script>
 </body>
 </html>
