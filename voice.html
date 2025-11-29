@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Guider Voice Nav</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.11/dist/bundle.min.js"></script>
+
+    <!-- Подключение CSS -->
+    <link rel="stylesheet" href="css/style-voice.css">
+</head>
+
+<body>
+
+    <div id="visualizerContainer">
+        <canvas id="voiceWaveCanvas"></canvas>
+    </div>
+
+    <div id="statusMessage">Ready</div>
+
+    <div id="cameraPreviewContainer">
+        <div class="floating-container">
+            <video id="liveCameraFeed" playsinline autoplay muted></video>
+            <div id="navHud">
+                <div id="navNextPoint"
+                    style="font-size: 14px; color: #7788aa; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px;">
+                    Calculated Path</div>
+
+                <div class="nav-arrow-container">
+                    <i id="navArrow" class="fas fa-arrow-up nav-icon-large"></i>
+                </div>
+
+                <div id="navDist" class="nav-dist">-- m</div>
+                <div id="navTime" class="nav-time">-- min</div>
+                <div id="navInstruction" class="nav-instruction">Locating...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="bottomControls">
+        <div class="glass-pill">
+            <button class="control-button" id="btnToggleNav" style="color: var(--accent-nav);"><i
+                    class="fas fa-map"></i></button>
+            <button class="control-button main-trigger" id="btnMicVoice"><i class="fas fa-microphone"></i></button>
+            <button class="control-button" id="btnCloseApp"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+
+    <!-- Подключение логики -->
+    <script type="module" src="js/app-voice.js"></script>
+</body>
+</html>
