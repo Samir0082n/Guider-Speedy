@@ -9,13 +9,13 @@ const translations = {
 
 let map, tileLayer, genAI, model;
 let userLocation = { lat: 40.4093, lng: 49.8671 };
-let currentSettings = { mode: 'walk', type: 'cultural' };
+let currentSettings = { mode: 'walk', type: 'cultural' }; 
 let routeLayers = [];
 let markerLayer = [];
 let currentLang = 'en';
 
-const GRADIENT_COLORS = ['#2ecc71', '#27ae60', '#145a32', '#000000'];
-const DEFAULT_COLOR = '#3a86ff';
+// Цвета для разных линий
+const GRADIENT_COLORS = ['#3a86ff', '#8338ec', '#ff006e', '#fb5607', '#ffbe0b'];
 
 window.onload = async () => {
   initMap();
@@ -31,7 +31,7 @@ function initMap() {
 
 function initAI() {
     genAI = new GoogleGenerativeAI(CONFIG.GEMINI_API_KEY);
-    model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" }); 
 }
 
 function setupEventListeners() {
@@ -48,7 +48,8 @@ function setupEventListeners() {
 function successLoc(pos) {
   userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
   map.setView([userLocation.lat, userLocation.lng], 15);
-  L.circleMarker([userLocation.lat, userLocation.lng], { radius: 8, color: '#fff', fillColor: '#3a86ff', fillOpacity: 1 }).addTo(map);
+  // Маркер пользователя
+  L.circleMarker([userLocation.lat, userLocation.lng], { radius: 8, color: '#fff', fillColor: '#3a86ff', fillOpacity: 1 }).addTo(map).bindPopup("You are here");
   getWeather();
 }
 
@@ -70,7 +71,7 @@ function selectOption(category, value, element) {
   if (category === 'type') {
     if (value === 'mountain') {
       transportCont.classList.add('hidden');
-      currentSettings.mode = 'walk';
+      currentSettings.mode = 'walk'; // В горах лучше пешком (для примера)
     } else {
       transportCont.classList.remove('hidden');
     }
@@ -115,53 +116,69 @@ async function generateRoute() {
   drawMap(places, isMountain);
 }
 
+// ИЗМЕНЕННАЯ ФУНКЦИЯ: Рисует отдельные линии до каждой точки
 async function drawMap(places, isMountain) {
+  // Очистка карты
   routeLayers.forEach(l => map.removeLayer(l));
   routeLayers = [];
   markerLayer.forEach(m => map.removeLayer(m));
   markerLayer = [];
 
-  let coords = `${userLocation.lng},${userLocation.lat}`;
-  places.forEach(p => coords += `;${p.lng},${p.lat}`);
-  const profile = (isMountain) ? 'driving' : 'walking';
+  const profile = (isMountain) ? 'driving' : 'walking'; // Или driving, если далеко
+  const allPointsBounds = [[userLocation.lat, userLocation.lng]];
 
-  const url = `https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=geojson&steps=true`;
-  const res = await fetch(url);
-  const data = await res.json();
+  // Создаем массив промисов, чтобы загрузить все маршруты одновременно
+  const routePromises = places.map(async (place, index) => {
+      // Строим маршрут: User -> Place (Отдельно для каждого)
+      const url = `https://router.project-osrm.org/route/v1/${profile}/${userLocation.lng},${userLocation.lat};${place.lng},${place.lat}?overview=full&geometries=geojson`;
+      
+      try {
+          const res = await fetch(url);
+          const data = await res.json();
+          
+          if (data.routes && data.routes.length > 0) {
+              const route = data.routes[0];
+              const coordinates = route.geometry.coordinates.map(c => [c[1], c[0]]);
+              
+              // Выбираем цвет
+              const color = GRADIENT_COLORS[index % GRADIENT_COLORS.length];
+              
+              // Рисуем линию
+              const polyline = L.polyline(coordinates, { 
+                  color: color, 
+                  weight: 5, 
+                  opacity: 0.8, 
+                  lineJoin: 'round' 
+              }).addTo(map);
+              routeLayers.push(polyline);
 
-  if (!data.routes || data.routes.length === 0) throw new Error("No path found");
-
-  const route = data.routes[0];
-  const allPoints = [[userLocation.lat, userLocation.lng]];
-
-  route.legs.forEach((leg, index) => {
-    let legCoords = [];
-    leg.steps.forEach(step => {
-      if (step.geometry && step.geometry.coordinates) {
-        step.geometry.coordinates.forEach(c => legCoords.push([c[1], c[0]]));
+              // Если есть риск, ставим иконку посередине пути
+              if (place.risk_level === 'high') {
+                  const midPoint = coordinates[Math.floor(coordinates.length / 2)];
+                  const dIcon = L.divIcon({ className: 'danger-icon', html: '<i class="fas fa-exclamation"></i>', iconSize: [24, 24] });
+                  const m = L.marker(midPoint, { icon: dIcon }).addTo(map).bindPopup(`<b style="color:red">SAFETY WARNING</b><br>${place.safety_note}`);
+                  markerLayer.push(m);
+              }
+          }
+      } catch (e) {
+          console.error("Route error", e);
       }
-    });
 
-    const color = isMountain ? (GRADIENT_COLORS[index] || '#000') : DEFAULT_COLOR;
-    const polyline = L.polyline(legCoords, { color: color, weight: 6, opacity: 0.9, lineJoin: 'round' }).addTo(map);
-    routeLayers.push(polyline);
-
-    if (places[index] && places[index].risk_level === 'high') {
-      const midPoint = legCoords[Math.floor(legCoords.length / 2)];
-      if (midPoint) {
-        const dIcon = L.divIcon({ className: 'danger-icon', html: '<i class="fas fa-exclamation"></i>', iconSize: [24, 24] });
-        markerLayer.push(L.marker(midPoint, { icon: dIcon }).addTo(map).bindPopup(`<b style="color:red">SAFETY WARNING</b><br>${places[index].safety_note}`));
-      }
-    }
+      // Добавляем маркер назначения
+      allPointsBounds.push([place.lat, place.lng]);
+      const icon = L.divIcon({ className: 'custom-div-icon', html: index + 1, iconSize: [30, 30] });
+      const marker = L.marker([place.lat, place.lng], { icon: icon }).addTo(map)
+          .bindPopup(`<b>${place.name}</b><br>${place.description}`);
+      markerLayer.push(marker);
   });
 
-  places.forEach((p, i) => {
-    allPoints.push([p.lat, p.lng]);
-    const icon = L.divIcon({ className: 'custom-div-icon', html: i + 1, iconSize: [30, 30] });
-    markerLayer.push(L.marker([p.lat, p.lng], { icon: icon }).addTo(map).bindPopup(`<b>${p.name}</b><br>${p.description}`));
-  });
+  // Ждем пока все маршруты построятся
+  await Promise.all(routePromises);
 
-  map.fitBounds(L.latLngBounds(allPoints), { padding: [50, 50] });
+  // Центрируем карту
+  if (allPointsBounds.length > 1) {
+      map.fitBounds(L.latLngBounds(allPointsBounds), { padding: [50, 50] });
+  }
 }
 
 function changeLanguage() {
