@@ -1,12 +1,12 @@
 import { GoogleGenerativeAI } from "https://cdn.jsdelivr.net/npm/@google/generative-ai/+esm";
 import { CONFIG } from "./config.js";
 
-let SYSTEM_PROMPT = `You are Cohana, a witty AI guide. You are helping the user navigate.
-1. Keep answers short and helpful.
-2. The user is currently walking/driving on a route.
-3. If asked about the route, use the context provided.
-4. Speak naturally.`;
+let SYSTEM_PROMPT = `You are Cohana, a witty AI guide.
+1. Keep answers short (max 2 sentences).
+2. You are guiding the user physically.
+3. Be encouraging.`;
 
+// --- AUDIO SETUP ---
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const analyser = audioCtx.createAnalyser();
 analyser.smoothingTimeConstant = 0.7; analyser.fftSize = 512;
@@ -14,10 +14,18 @@ const frequencyData = new Uint8Array(analyser.frequencyBinCount);
 
 let sourceNode = null;
 let ttsNode = null;
+
+// --- NAVIGATION STATE ---
 let routeData = null;
-let navInterval = null;
+let watchId = null;
+
+// Переменные для сглаживания GPS (Low Pass Filter)
+let currentPos = { lat: null, lng: null };
+const FILTER_FACTOR = 0.2; // 0.1 (сильное сглаживание) - 1.0 (без сглаживания)
+
 let currentHeading = 0;
 let targetBearing = 0;
+let lastInstructionTime = 0;
 
 const STATE = { isNavMode: false, isListening: false, isProcessing: false, isPlaying: false, vad: null, chat: null };
 
@@ -36,134 +44,214 @@ const el = {
     nextPt: document.getElementById('navNextPoint')
 };
 
+// Кнопка для запроса разрешения компаса на iOS
+const iosPermBtn = document.getElementById('iosPermissionBtn'); 
+
 window.onload = () => {
     initVAD();
 
     const storedData = localStorage.getItem('activeRoute');
     if (storedData) {
         routeData = JSON.parse(storedData);
-        // Берем первую точку как цель по умолчанию
         const target = routeData.places[0];
         el.nextPt.innerText = `To: ${target.name}`;
-        
-        const stops = routeData.places.map(p => p.name).join(' -> ');
-        SYSTEM_PROMPT += `\nCurrent Route Context: User is going to: ${stops}. \nDescription of stops: ${JSON.stringify(routeData.places)}`;
+        SYSTEM_PROMPT += `\nUser is going to: ${target.name}. Route description: ${target.description || ''}`;
         toggleNavMode(true);
     } else {
-        el.instr.innerText = "No route found. Start from map.";
+        el.instr.innerText = "No route. Return to map.";
     }
 
+    // Обработка ориентации (Компас)
     if (window.DeviceOrientationEvent) {
-        window.addEventListener('deviceorientation', handleOrientation);
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            // iOS 13+ требует кнопку
+            if(iosPermBtn) iosPermBtn.style.display = 'block';
+        } else {
+            window.addEventListener('deviceorientation', handleOrientation);
+        }
     }
-    
+
     // Listeners
+    if(iosPermBtn) {
+        iosPermBtn.onclick = () => {
+            DeviceOrientationEvent.requestPermission()
+            .then(response => {
+                if (response === 'granted') {
+                    window.addEventListener('deviceorientation', handleOrientation);
+                    iosPermBtn.style.display = 'none';
+                }
+            }).catch(console.error);
+        };
+    }
+
     el.btnNav.onclick = () => toggleNavMode();
     el.btnClose.onclick = () => window.location.href = 'index.html';
+    
     el.mics.forEach(b => b.onclick = () => {
         if (STATE.isProcessing) return;
         if (STATE.isListening) { pauseListening(); showStatus("Paused"); }
         else { if (STATE.isPlaying) player.stop(); startListening(); }
     });
-    window.addEventListener('resize', () => { el.canvas.width = el.vis.clientWidth; el.canvas.height = el.vis.clientHeight; });
+
+    window.addEventListener('resize', () => { 
+        el.canvas.width = el.vis.clientWidth; 
+        el.canvas.height = el.vis.clientHeight; 
+    });
 };
 
 function handleOrientation(event) {
     let heading = 0;
+    // iOS (webkitCompassHeading) vs Android (alpha)
     if (event.webkitCompassHeading) {
         heading = event.webkitCompassHeading;
     } else if (event.alpha !== null) {
-        heading = 360 - event.alpha;
+        heading = 360 - event.alpha; // Android rotation is counter-clockwise
     }
     currentHeading = heading;
-    updateCompass();
+    updateCompassUI();
 }
 
-function updateCompass() {
+function updateCompassUI() {
     if (!STATE.isNavMode) return;
-    const relativeBearing = targetBearing - currentHeading;
+    // Вычисляем угол поворота стрелки относительно телефона
+    let relativeBearing = targetBearing - currentHeading;
+    // Нормализация угла (-180 до 180)
+    while (relativeBearing < -180) relativeBearing += 360;
+    while (relativeBearing > 180) relativeBearing -= 360;
+    
     el.arrow.style.transform = `rotate(${relativeBearing}deg)`;
 }
 
-async function updateNavigation() {
-    if (!routeData || !routeData.places || routeData.places.length === 0) return;
-
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        // Навигация всегда к ПЕРВОЙ точке из списка (или можно сделать выбор)
-        const target = routeData.places[0];
-
-        try {
-            const profile = routeData.mode === 'walk' ? 'walking' : 'driving';
-            const url = `https://router.project-osrm.org/route/v1/${profile}/${lng},${lat};${target.lng},${target.lat}?steps=true&overview=false`;
-
-            const res = await fetch(url);
-            const data = await res.json();
-
-            if (data.routes && data.routes.length > 0) {
-                const route = data.routes[0];
-                const step = route.legs[0].steps[0];
-                const duration = route.duration;
-                const distance = route.distance;
-
-                if (step && step.maneuver && step.maneuver.bearing_after !== undefined) {
-                    targetBearing = step.maneuver.bearing_after;
-                }
-
-                updateNavUI(step, distance, duration, target.name);
-                updateCompass();
-            }
-        } catch (e) { console.error(e); }
-
-    }, (err) => console.log(err), { enableHighAccuracy: true });
-}
-
-// ИЗМЕНЕННАЯ ФУНКЦИЯ: Добавлена конвертация в км
-function updateNavUI(step, totalDist, totalTimeSec, targetName) {
-    el.nextPt.innerText = `To: ${targetName}`;
-    
-    // ЛОГИКА КМ / М
-    if (totalDist >= 1000) {
-        // Если больше 1000м, делим на 1000 и оставляем 1 знак после запятой (1.2 km)
-        el.dist.innerText = `${(totalDist / 1000).toFixed(1)} km`;
-    } else {
-        // Если меньше, показываем метры
-        el.dist.innerText = `${Math.round(totalDist)} m`;
-    }
-
-    el.time.innerText = `${Math.ceil(totalTimeSec / 60)} min`;
-
-    let instruction = "Go Straight";
-    if (step && step.maneuver) {
-        const m = step.maneuver;
-        instruction = step.name ? `Head towards ${step.name}` : "Follow the path";
-        if (step.distance < 30 && step.maneuver.type !== 'depart') {
-            instruction = `Turn ${m.modifier || 'now'} in ${Math.round(step.distance)}m`;
-        }
-    }
-    el.instr.innerText = instruction;
-}
-
+// Запуск навигации
 function toggleNavMode(forceState) {
     STATE.isNavMode = forceState !== undefined ? forceState : !STATE.isNavMode;
 
     if (STATE.isNavMode) {
         document.body.classList.add('camera-mode-active');
         el.btnNav.classList.add('active');
-        updateNavigation();
-        navInterval = setInterval(updateNavigation, 5000);
+        startTracking(); // Запускаем GPS трекинг
     } else {
         document.body.classList.remove('camera-mode-active');
         el.btnNav.classList.remove('active');
-        clearInterval(navInterval);
+        stopTracking();
     }
-
+    
     setTimeout(() => {
         el.canvas.width = el.vis.clientWidth;
         el.canvas.height = el.vis.clientHeight;
     }, 500);
 }
+
+function startTracking() {
+    if (watchId) return;
+    if (!navigator.geolocation) { showStatus("No GPS"); return; }
+
+    watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+
+            // Low-Pass Filter для сглаживания координат
+            if (currentPos.lat === null) {
+                currentPos = { lat, lng };
+            } else {
+                currentPos.lat = currentPos.lat * (1 - FILTER_FACTOR) + lat * FILTER_FACTOR;
+                currentPos.lng = currentPos.lng * (1 - FILTER_FACTOR) + lng * FILTER_FACTOR;
+            }
+
+            // Обновляем маршрут каждые 3-4 секунды или если мы близко
+            const now = Date.now();
+            if (now - lastInstructionTime > 4000) {
+                updateRouteCalculation();
+                lastInstructionTime = now;
+            }
+        },
+        (err) => console.log("GPS Err", err),
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+    );
+}
+
+function stopTracking() {
+    if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+    }
+}
+
+async function updateRouteCalculation() {
+    if (!routeData || !currentPos.lat) return;
+
+    const target = routeData.places[0];
+    const profile = routeData.mode === 'walk' ? 'walking' : 'driving';
+    
+    // Запрос к OSRM с текущими сглаженными координатами
+    // steps=true нужен для получения маневров
+    const url = `https://router.project-osrm.org/route/v1/${profile}/${currentPos.lng},${currentPos.lat};${target.lng},${target.lat}?steps=true&overview=false`;
+
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.routes && data.routes.length > 0) {
+            const route = data.routes[0];
+            const legs = route.legs[0];
+            const steps = legs.steps;
+            
+            // Расстояние и время до финиша
+            updateDistTimeUI(route.distance, route.duration);
+
+            // Логика следующего шага
+            // steps[0] - это обычно "current road", steps[1] - "next maneuver"
+            if (steps.length > 1) {
+                const nextStep = steps[1]; // Следующий маневр
+                // Берем bearing (направление) маневра для стрелки
+                if(nextStep.maneuver && nextStep.maneuver.bearing_after) {
+                    targetBearing = nextStep.maneuver.bearing_after;
+                }
+                
+                // Инструкция: что делать ДАЛЬШЕ
+                let instrText = nextStep.maneuver.type || 'go';
+                if (nextStep.maneuver.modifier) instrText += ` ${nextStep.maneuver.modifier}`;
+                
+                // Формируем красивый текст
+                const distToTurn = steps[0].distance;
+                if (distToTurn < 30) {
+                    el.instr.innerText = `TURN NOW: ${humanizeManeuver(nextStep.maneuver)}`;
+                    el.instr.style.color = '#00e676';
+                } else {
+                    el.instr.innerText = `In ${Math.round(distToTurn)}m: ${humanizeManeuver(nextStep.maneuver)}`;
+                    el.instr.style.color = '#ccd';
+                }
+            } else {
+                // Мы на финишной прямой
+                el.instr.innerText = "Destination ahead!";
+                targetBearing = 0; // Сброс, или можно вычислить азимут к точке
+            }
+            
+            updateCompassUI();
+        }
+    } catch (e) { console.error(e); }
+}
+
+function humanizeManeuver(m) {
+    if (!m) return "Go Straight";
+    const mod = m.modifier ? m.modifier.replace('left', 'Left').replace('right', 'Right') : '';
+    if (m.type === 'turn') return `Turn ${mod}`;
+    if (m.type === 'new name') return `Continue`;
+    if (m.type === 'arrive') return `Arrive`;
+    return `${m.type} ${mod}`;
+}
+
+function updateDistTimeUI(distMeters, timeSec) {
+    if (distMeters >= 1000) {
+        el.dist.innerText = `${(distMeters / 1000).toFixed(1)} km`;
+    } else {
+        el.dist.innerText = `${Math.round(distMeters)} m`;
+    }
+    el.time.innerText = `${Math.ceil(timeSec / 60)} min`;
+}
+
+// --- ВИЗУАЛИЗАТОР, АУДИО И ИИ (Остаются практически без изменений, но причесаны) ---
 
 const waveLayers = [
     { color: "rgba(41, 98, 255, 0.7)", speed: 0.02, phase: 0, amplitude: 1.1 },
@@ -177,20 +265,16 @@ function startVisualizer() {
     if (animId) return;
 
     const ctx = el.canvas.getContext('2d');
-    el.canvas.width = el.vis.clientWidth;
-    el.canvas.height = el.vis.clientHeight;
-
+    
     function render() {
         animId = requestAnimationFrame(render);
         analyser.getByteFrequencyData(frequencyData);
-
         const { width, height } = el.canvas;
         ctx.clearRect(0, 0, width, height);
 
         let total = 0;
         for (let i = 0; i < frequencyData.length; i++) total += frequencyData[i];
-        let avg = total / frequencyData.length;
-        let vol = (avg / 128.0) * 1.5 + 0.1;
+        let vol = (total / frequencyData.length / 128.0) * 1.5 + 0.1;
 
         waveLayers.forEach(layer => {
             layer.phase += layer.speed;
@@ -201,18 +285,14 @@ function startVisualizer() {
             ctx.fillStyle = grad;
             ctx.moveTo(0, height);
 
-            for (let i = 0; i < frequencyData.length; i += 2) {
+            for (let i = 0; i < frequencyData.length; i += 5) { // Оптимизация шага
                 const x = (i / (frequencyData.length - 1)) * width;
                 const baseH = (frequencyData[i] / 255) * height * 0.6 * vol * layer.amplitude;
-                const yOffset = Math.sin(i * 0.1 + layer.phase) * 15 * vol;
-                const y = height - baseH - yOffset - 5;
-                const prevX = i === 0 ? 0 : ((i - 2) / (frequencyData.length - 1)) * width;
-
+                const y = height - baseH - Math.sin(i * 0.1 + layer.phase) * 15 * vol;
                 if (i === 0) ctx.lineTo(x, y);
-                else ctx.quadraticCurveTo(prevX + (x - prevX) / 2, y, x, y);
+                else ctx.lineTo(x, y);
             }
             ctx.lineTo(width, height);
-            ctx.closePath();
             ctx.fill();
         });
     }
@@ -235,7 +315,7 @@ class SmartPlayer {
             ttsNode.start(0);
         } catch (e) { this.process(); }
     }
-    stop() { if (ttsNode) { ttsNode.stop(); ttsNode = null; } this.queue = []; this.isPlay = false; STATE.isPlaying = false; }
+    stop() { if (ttsNode) { try{ttsNode.stop();}catch(e){} ttsNode = null; } this.queue = []; this.isPlay = false; STATE.isPlaying = false; }
 }
 const player = new SmartPlayer();
 
@@ -258,7 +338,11 @@ async function processAudio(audioBlob) {
     try {
         if (!STATE.chat) await initGemini();
         const b64 = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result.split(',')[1]); rd.readAsDataURL(audioBlob); });
-        const result = await STATE.chat.sendMessage([{ inlineData: { mimeType: 'audio/wav', data: b64 } }]);
+        
+        // Add current location context to the message invisibly
+        const locContext = currentPos.lat ? ` [My Loc: ${currentPos.lat.toFixed(4)},${currentPos.lng.toFixed(4)}]` : "";
+        
+        const result = await STATE.chat.sendMessage([{ inlineData: { mimeType: 'audio/wav', data: b64 } }, {text: locContext}]);
         setProcess(false); showStatus("Speaking..."); streamAudio(result.response.text());
     } catch (e) { console.error(e); setProcess(false); showStatus("Error"); startListening(); }
 }
@@ -285,11 +369,13 @@ function streamAudio(text) {
 function startListening() {
     if (!STATE.vad) return;
     audioCtx.resume();
+    // Use getUserMedia to ensure context is unlocked
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-        if (sourceNode) sourceNode.disconnect();
+        if (sourceNode) { sourceNode.disconnect(); } 
         sourceNode = audioCtx.createMediaStreamSource(stream);
-        sourceNode.connect(analyser);
-    });
+        sourceNode.connect(analyser); // Connect mic to visualizer directly
+    }).catch(e => console.log(e));
+
     player.stop(); STATE.vad.start(); STATE.isListening = true;
     updateMicBtns('listening'); startVisualizer(); showStatus("Listening...");
 }
