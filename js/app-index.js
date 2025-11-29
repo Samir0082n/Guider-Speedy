@@ -13,7 +13,7 @@ let currentSettings = { mode: 'walk', type: 'cultural' };
 let routeLayers = [];
 let markerLayer = [];
 let currentLang = 'en';
-let generatedPlaces = []; // Храним найденные места
+let generatedPlaces = [];
 
 const GRADIENT_COLORS = ['#3a86ff', '#8338ec', '#ff006e', '#fb5607', '#ffbe0b'];
 
@@ -23,13 +23,12 @@ window.onload = async () => {
   setupEventListeners();
   if (navigator.geolocation) navigator.geolocation.getCurrentPosition(successLoc, errorLoc);
   
-  // Делаем функцию доступной глобально для кнопки в попапе
   window.startSpecificRoute = (index) => {
-      if (!generatedPlaces[index]) return;
-      // Ставим выбранное место первым в списке
-      const selected = generatedPlaces[index];
-      const newPlaces = [selected]; // Оставляем только выбранное для навигации
+      // Ищем в массиве validPlaces (который теперь отфильтрован)
+      const clickedPlace = window.validPlacesList[index];
+      if (!clickedPlace) return;
       
+      const newPlaces = [clickedPlace];
       localStorage.setItem('activeRoute', JSON.stringify({ places: newPlaces, mode: currentSettings.mode, isMountain: currentSettings.type === 'mountain' }));
       window.location.href = 'voice.html';
   };
@@ -97,10 +96,9 @@ function selectOption(category, value, element) {
   }
 }
 
-// Формула для расчета расстояния (Haversine)
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
-  var R = 6371; // Radius of the earth in km
-  var dLat = deg2rad(lat2-lat1);  // deg2rad below
+  var R = 6371; 
+  var dLat = deg2rad(lat2-lat1);  
   var dLon = deg2rad(lon2-lon1); 
   var a = 
     Math.sin(dLat/2) * Math.sin(dLat/2) +
@@ -108,12 +106,17 @@ function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
     Math.sin(dLon/2) * Math.sin(dLon/2)
     ; 
   var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-  var d = R * c; // Distance in km
+  var d = R * c; 
   return d;
 }
 
-function deg2rad(deg) {
-  return deg * (Math.PI/180)
+function deg2rad(deg) { return deg * (Math.PI/180) }
+
+function showError(msg) {
+    const errDiv = document.getElementById('error-msg');
+    errDiv.innerText = msg;
+    errDiv.style.display = 'block';
+    setTimeout(() => { errDiv.style.display = 'none'; }, 5000);
 }
 
 async function handleGenerateClick() {
@@ -121,13 +124,17 @@ async function handleGenerateClick() {
   const originalText = btn.innerHTML;
   btn.innerHTML = `<div class="spinner"></div> ${translations[currentLang].planning}`;
   btn.disabled = true;
+  document.getElementById('error-msg').style.display = 'none';
+  document.getElementById('hint-msg').style.display = 'none';
 
   try {
     await generateRoute();
     btn.style.display = 'none';
-    document.getElementById('hint-msg').style.display = 'block'; // Показываем подсказку
+    document.getElementById('hint-msg').style.display = 'block';
   } catch (e) {
-    alert("AI Error: " + e.message);
+    console.error(e);
+    // Если ошибка пришла с текстом "No objects...", показываем её
+    showError(e.message.includes("No objects") ? e.message : "AI Error. Try again.");
     btn.innerHTML = originalText;
     btn.disabled = false;
   }
@@ -146,9 +153,9 @@ async function generateRoute() {
 
   let vibePrompt = "";
   if (isMountain) {
-    vibePrompt = `MODE: MOUNTAIN EXPEDITION. SEARCH Greater Caucasus Mountains (Azerbaijan). Suggest 3 distinct stops (Peaks, Lakes, Campsites). NO restaurants.`;
+    vibePrompt = `MODE: MOUNTAIN EXPEDITION. SEARCH Greater Caucasus Mountains (Azerbaijan). Suggest 5 distinct stops (Peaks, Lakes, Campsites). NO restaurants.`;
   } else {
-    vibePrompt = `Mode: ${currentSettings.mode}. Vibe: ${currentSettings.type}. Suggest 3-4 stops. STRICTLY within ${radiusKm}km radius.`;
+    vibePrompt = `Mode: ${currentSettings.mode}. Vibe: ${currentSettings.type}. Suggest 5-6 stops. STRICTLY within ${radiusKm}km radius. DO NOT suggest locations in the Sea/Water.`;
   }
 
   const prompt = `Start Location: ${userLocation.lat}, ${userLocation.lng}. ${vibePrompt} Radius: ${radiusKm}km. 
@@ -159,23 +166,44 @@ async function generateRoute() {
   const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
   let rawPlaces = JSON.parse(text);
 
-  // ФИЛЬТРАЦИЯ ПО РАССТОЯНИЮ (Client Side Check)
-  // Мы даем небольшой буфер (1.2), так как карты могут чуть отличаться, но отсекаем явные ошибки
+  // 1. Фильтр по математическому радиусу
   if (!isMountain) {
-      generatedPlaces = rawPlaces.filter(p => {
+      rawPlaces = rawPlaces.filter(p => {
           const dist = getDistanceFromLatLonInKm(userLocation.lat, userLocation.lng, p.lat, p.lng);
           return dist <= (radiusKm * 1.5); 
       });
-      
-      if (generatedPlaces.length === 0 && rawPlaces.length > 0) {
-          alert(`AI suggested places too far away (${rawPlaces.length} removed). Try increasing radius.`);
-          throw new Error("No places found within radius");
-      }
-  } else {
-      generatedPlaces = rawPlaces;
   }
 
-  drawMap(generatedPlaces, isMountain);
+  // 2. СТРОГИЙ ФИЛЬТР OSRM (Проверка на "Море")
+  // Мы пытаемся построить маршрут. Если OSRM говорит "нет пути" - значит точка в море или недоступна.
+  const validPlaces = [];
+  const profile = (isMountain) ? 'driving' : 'walking'; 
+
+  // Проверяем каждую точку
+  for (const place of rawPlaces) {
+      const url = `https://router.project-osrm.org/route/v1/${profile}/${userLocation.lng},${userLocation.lat};${place.lng},${place.lat}?overview=false`;
+      try {
+          const res = await fetch(url);
+          const data = await res.json();
+          // Если маршрут найден (data.routes существует и не пуст) - точка валидная
+          if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+             validPlaces.push(place);
+          }
+      } catch(e) { }
+      // Ограничиваем количество валидных точек до 3-х, чтобы не спамить карту
+      if (validPlaces.length >= 3) break;
+  }
+
+  // ЕСЛИ ПОСЛЕ ВСЕХ ПРОВЕРОК ПУСТО -> ОШИБКА
+  if (validPlaces.length === 0) {
+      throw new Error(`No objects found within ${radiusKm} km. Try increasing radius.`);
+  }
+
+  // Сохраняем глобально для доступа из кнопки GO HERE
+  window.validPlacesList = validPlaces;
+  
+  // Рисуем только валидные
+  drawMap(validPlaces, isMountain);
 }
 
 async function drawMap(places, isMountain) {
@@ -219,7 +247,6 @@ async function drawMap(places, isMountain) {
       allPointsBounds.push([place.lat, place.lng]);
       const icon = L.divIcon({ className: 'custom-div-icon', html: index + 1, iconSize: [30, 30] });
       
-      // ВАЖНО: Добавили кнопку GO HERE в попап
       const popupContent = `
           <div style="text-align:center;">
               <b>${place.name}</b><br>
@@ -260,5 +287,3 @@ function toggleTheme() {
   const url = isLight ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
   tileLayer.setUrl(url);
 }
-
-function startVoiceMode() { window.location.href = 'voice.html'; }
