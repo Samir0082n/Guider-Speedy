@@ -77,7 +77,6 @@ body {
   pointer-events: auto;
 }
 
-/* HEADER */
 .top-header {
   padding: 50px 20px 10px;
   display: flex;
@@ -105,7 +104,6 @@ body {
   outline: none;
 }
 
-/* CONTROLS */
 .bottom-container {
   padding: 20px;
   display: flex;
@@ -114,7 +112,6 @@ body {
   gap: 15px;
 }
 
-/* Transport Container Animation */
 #transport-container {
   width: 100%;
   display: flex;
@@ -182,7 +179,6 @@ body {
   box-shadow: 0 0 20px rgba(46, 204, 113, 0.4);
 }
 
-/* RADIUS INPUT STYLE */
 .radius-container {
     width: 100%;
     display: flex;
@@ -222,6 +218,28 @@ body {
     border-color: var(--accent);
 }
 
+/* ERROR MESSAGE STYLE */
+.error-msg {
+    color: var(--danger);
+    background: rgba(255, 71, 87, 0.1);
+    border: 1px solid var(--danger);
+    padding: 12px;
+    border-radius: 15px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    width: 100%;
+    animation: shake 0.5s;
+}
+
+@keyframes shake {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  50% { transform: translateX(5px); }
+  75% { transform: translateX(-5px); }
+  100% { transform: translateX(0); }
+}
+
 .btn-create {
   background: var(--accent);
   color: white;
@@ -243,12 +261,8 @@ body {
   transform: scale(0.98);
 }
 
-/* Скрываем старую кнопку старт, так как теперь старт из попапа */
-.btn-start {
-  display: none !important; 
-}
+.btn-start { display: none !important; }
 
-/* POPUP BUTTON (NEW) */
 .btn-popup {
     background: var(--accent-green);
     color: white;
