@@ -42,6 +42,10 @@ window.onload = () => {
     const storedData = localStorage.getItem('activeRoute');
     if (storedData) {
         routeData = JSON.parse(storedData);
+        // Берем первую точку как цель по умолчанию
+        const target = routeData.places[0];
+        el.nextPt.innerText = `To: ${target.name}`;
+        
         const stops = routeData.places.map(p => p.name).join(' -> ');
         SYSTEM_PROMPT += `\nCurrent Route Context: User is going to: ${stops}. \nDescription of stops: ${JSON.stringify(routeData.places)}`;
         toggleNavMode(true);
@@ -52,7 +56,7 @@ window.onload = () => {
     if (window.DeviceOrientationEvent) {
         window.addEventListener('deviceorientation', handleOrientation);
     }
-
+    
     // Listeners
     el.btnNav.onclick = () => toggleNavMode();
     el.btnClose.onclick = () => window.location.href = 'index.html';
@@ -87,6 +91,7 @@ async function updateNavigation() {
     navigator.geolocation.getCurrentPosition(async (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
+        // Навигация всегда к ПЕРВОЙ точке из списка (или можно сделать выбор)
         const target = routeData.places[0];
 
         try {
@@ -114,9 +119,19 @@ async function updateNavigation() {
     }, (err) => console.log(err), { enableHighAccuracy: true });
 }
 
+// ИЗМЕНЕННАЯ ФУНКЦИЯ: Добавлена конвертация в км
 function updateNavUI(step, totalDist, totalTimeSec, targetName) {
     el.nextPt.innerText = `To: ${targetName}`;
-    el.dist.innerText = `${Math.round(totalDist)}m`;
+    
+    // ЛОГИКА КМ / М
+    if (totalDist >= 1000) {
+        // Если больше 1000м, делим на 1000 и оставляем 1 знак после запятой (1.2 km)
+        el.dist.innerText = `${(totalDist / 1000).toFixed(1)} km`;
+    } else {
+        // Если меньше, показываем метры
+        el.dist.innerText = `${Math.round(totalDist)} m`;
+    }
+
     el.time.innerText = `${Math.ceil(totalTimeSec / 60)} min`;
 
     let instruction = "Go Straight";
