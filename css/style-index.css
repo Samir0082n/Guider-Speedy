@@ -183,6 +183,46 @@ body {
   box-shadow: 0 0 20px rgba(46, 204, 113, 0.4);
 }
 
+/* RADIUS INPUT STYLE (NEW) */
+.radius-container {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--btn-bg);
+    padding: 10px 20px;
+    border-radius: 20px;
+    border: 1px solid var(--btn-border);
+    transition: all 0.3s ease;
+}
+
+.radius-container.hidden {
+    display: none;
+}
+
+.radius-label {
+    font-size: 14px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+#radius-input {
+    width: 80px;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 10px;
+    color: var(--text);
+    padding: 8px;
+    text-align: center;
+    font-size: 16px;
+    font-weight: bold;
+    outline: none;
+}
+
+#radius-input:focus {
+    border-color: var(--accent);
+}
+
 .btn-create {
   background: var(--accent);
   color: white;
