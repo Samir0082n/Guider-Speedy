@@ -13,8 +13,8 @@ let currentSettings = { mode: 'walk', type: 'cultural' };
 let routeLayers = [];
 let markerLayer = [];
 let currentLang = 'en';
+let generatedPlaces = []; // Храним найденные места
 
-// Цвета для разных линий
 const GRADIENT_COLORS = ['#3a86ff', '#8338ec', '#ff006e', '#fb5607', '#ffbe0b'];
 
 window.onload = async () => {
@@ -22,6 +22,17 @@ window.onload = async () => {
   initAI();
   setupEventListeners();
   if (navigator.geolocation) navigator.geolocation.getCurrentPosition(successLoc, errorLoc);
+  
+  // Делаем функцию доступной глобально для кнопки в попапе
+  window.startSpecificRoute = (index) => {
+      if (!generatedPlaces[index]) return;
+      // Ставим выбранное место первым в списке
+      const selected = generatedPlaces[index];
+      const newPlaces = [selected]; // Оставляем только выбранное для навигации
+      
+      localStorage.setItem('activeRoute', JSON.stringify({ places: newPlaces, mode: currentSettings.mode, isMountain: currentSettings.type === 'mountain' }));
+      window.location.href = 'voice.html';
+  };
 };
 
 function initMap() {
@@ -38,7 +49,6 @@ function setupEventListeners() {
     document.getElementById('lang-select').onchange = changeLanguage;
     document.getElementById('theme-btn').onclick = toggleTheme;
     document.getElementById('generate-btn').onclick = handleGenerateClick;
-    document.getElementById('start-btn').onclick = startVoiceMode;
 
     document.querySelectorAll('.choice-btn').forEach(btn => {
         btn.onclick = () => selectOption(btn.dataset.cat, btn.dataset.val, btn);
@@ -48,7 +58,6 @@ function setupEventListeners() {
 function successLoc(pos) {
   userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
   map.setView([userLocation.lat, userLocation.lng], 15);
-  // Маркер пользователя
   L.circleMarker([userLocation.lat, userLocation.lng], { radius: 8, color: '#fff', fillColor: '#3a86ff', fillOpacity: 1 }).addTo(map).bindPopup("You are here");
   getWeather();
 }
@@ -71,9 +80,7 @@ function selectOption(category, value, element) {
   const radiusCont = document.getElementById('radius-container');
   const radiusInput = document.getElementById('radius-input');
 
-  // Логика переключения режима
   if (category === 'mode') {
-      // Если выбрали пешком - ставим 5км, если авто - 20км (но пользователь может поменять)
       if (value === 'walk') radiusInput.value = 5;
       if (value === 'car') radiusInput.value = 20;
   }
@@ -81,13 +88,32 @@ function selectOption(category, value, element) {
   if (category === 'type') {
     if (value === 'mountain') {
       transportCont.classList.add('hidden');
-      radiusCont.classList.add('hidden'); // Прячем радиус для гор
+      radiusCont.classList.add('hidden'); 
       currentSettings.mode = 'walk'; 
     } else {
       transportCont.classList.remove('hidden');
-      radiusCont.classList.remove('hidden'); // Показываем радиус
+      radiusCont.classList.remove('hidden'); 
     }
   }
+}
+
+// Формула для расчета расстояния (Haversine)
+function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+  var R = 6371; // Radius of the earth in km
+  var dLat = deg2rad(lat2-lat1);  // deg2rad below
+  var dLon = deg2rad(lon2-lon1); 
+  var a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2)
+    ; 
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+  var d = R * c; // Distance in km
+  return d;
+}
+
+function deg2rad(deg) {
+  return deg * (Math.PI/180)
 }
 
 async function handleGenerateClick() {
@@ -99,7 +125,7 @@ async function handleGenerateClick() {
   try {
     await generateRoute();
     btn.style.display = 'none';
-    document.getElementById('start-btn').style.display = 'flex';
+    document.getElementById('hint-msg').style.display = 'block'; // Показываем подсказку
   } catch (e) {
     alert("AI Error: " + e.message);
     btn.innerHTML = originalText;
@@ -110,10 +136,9 @@ async function handleGenerateClick() {
 async function generateRoute() {
   const isMountain = currentSettings.type === 'mountain';
   
-  // Читаем радиус из инпута, если это не горы
   let radiusKm = 5;
   if (isMountain) {
-      radiusKm = 300; // Для гор фиксированный большой радиус
+      radiusKm = 300; 
   } else {
       const inputVal = document.getElementById('radius-input').value;
       radiusKm = inputVal ? parseInt(inputVal) : 5;
@@ -123,20 +148,36 @@ async function generateRoute() {
   if (isMountain) {
     vibePrompt = `MODE: MOUNTAIN EXPEDITION. SEARCH Greater Caucasus Mountains (Azerbaijan). Suggest 3 distinct stops (Peaks, Lakes, Campsites). NO restaurants.`;
   } else {
-    vibePrompt = `Mode: ${currentSettings.mode}. Vibe: ${currentSettings.type}. Suggest 3-4 stops.`;
+    vibePrompt = `Mode: ${currentSettings.mode}. Vibe: ${currentSettings.type}. Suggest 3-4 stops. STRICTLY within ${radiusKm}km radius.`;
   }
 
-  const prompt = `Start Location: ${userLocation.lat}, ${userLocation.lng}. ${vibePrompt} Radius: ${radiusKm}km. Analyze weather/terrain. Assign "risk_level": "high" if risky. OUTPUT JSON ONLY: [ { "name": "Place Name", "lat": 0.0, "lng": 0.0, "description": "Short desc", "safety_note": "Risk details", "risk_level": "low" } ]`;
+  const prompt = `Start Location: ${userLocation.lat}, ${userLocation.lng}. ${vibePrompt} Radius: ${radiusKm}km. 
+  IMPORTANT: Calculate distances accurately. Do not suggest places further than ${radiusKm}km!
+  OUTPUT JSON ONLY: [ { "name": "Place Name", "lat": 0.0, "lng": 0.0, "description": "Short desc", "safety_note": "Risk details", "risk_level": "low" } ]`;
 
   const result = await model.generateContent(prompt);
   const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-  const places = JSON.parse(text);
+  let rawPlaces = JSON.parse(text);
 
-  localStorage.setItem('activeRoute', JSON.stringify({ places, mode: currentSettings.mode, isMountain }));
-  drawMap(places, isMountain);
+  // ФИЛЬТРАЦИЯ ПО РАССТОЯНИЮ (Client Side Check)
+  // Мы даем небольшой буфер (1.2), так как карты могут чуть отличаться, но отсекаем явные ошибки
+  if (!isMountain) {
+      generatedPlaces = rawPlaces.filter(p => {
+          const dist = getDistanceFromLatLonInKm(userLocation.lat, userLocation.lng, p.lat, p.lng);
+          return dist <= (radiusKm * 1.5); 
+      });
+      
+      if (generatedPlaces.length === 0 && rawPlaces.length > 0) {
+          alert(`AI suggested places too far away (${rawPlaces.length} removed). Try increasing radius.`);
+          throw new Error("No places found within radius");
+      }
+  } else {
+      generatedPlaces = rawPlaces;
+  }
+
+  drawMap(generatedPlaces, isMountain);
 }
 
-// Рисует отдельные линии до каждой точки
 async function drawMap(places, isMountain) {
   routeLayers.forEach(l => map.removeLayer(l));
   routeLayers = [];
@@ -173,14 +214,22 @@ async function drawMap(places, isMountain) {
                   markerLayer.push(m);
               }
           }
-      } catch (e) {
-          console.error("Route error", e);
-      }
+      } catch (e) { console.error("Route error", e); }
 
       allPointsBounds.push([place.lat, place.lng]);
       const icon = L.divIcon({ className: 'custom-div-icon', html: index + 1, iconSize: [30, 30] });
+      
+      // ВАЖНО: Добавили кнопку GO HERE в попап
+      const popupContent = `
+          <div style="text-align:center;">
+              <b>${place.name}</b><br>
+              <span style="font-size:12px; color:#888;">${place.description}</span><br>
+              <button onclick="startSpecificRoute(${index})" class="btn-popup">GO HERE 🚀</button>
+          </div>
+      `;
+
       const marker = L.marker([place.lat, place.lng], { icon: icon }).addTo(map)
-          .bindPopup(`<b>${place.name}</b><br>${place.description}`);
+          .bindPopup(popupContent);
       markerLayer.push(marker);
   });
 
