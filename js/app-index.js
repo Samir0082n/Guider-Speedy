@@ -13,7 +13,7 @@ let currentSettings = { mode: 'walk', type: 'cultural' };
 let routeLayers = [];
 let markerLayer = [];
 let currentLang = 'en';
-let generatedPlaces = []; // Храним найденные места
+let generatedPlaces = []; 
 
 const GRADIENT_COLORS = ['#3a86ff', '#8338ec', '#ff006e', '#fb5607', '#ffbe0b'];
 
@@ -23,12 +23,10 @@ window.onload = async () => {
   setupEventListeners();
   if (navigator.geolocation) navigator.geolocation.getCurrentPosition(successLoc, errorLoc);
   
-  // Делаем функцию доступной глобально для кнопки в попапе
   window.startSpecificRoute = (index) => {
       if (!generatedPlaces[index]) return;
-      // Ставим выбранное место первым в списке
       const selected = generatedPlaces[index];
-      const newPlaces = [selected]; // Оставляем только выбранное для навигации
+      const newPlaces = [selected]; 
       
       localStorage.setItem('activeRoute', JSON.stringify({ places: newPlaces, mode: currentSettings.mode, isMountain: currentSettings.type === 'mountain' }));
       window.location.href = 'voice.html';
@@ -97,10 +95,9 @@ function selectOption(category, value, element) {
   }
 }
 
-// Формула для расчета расстояния (Haversine)
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
-  var R = 6371; // Radius of the earth in km
-  var dLat = deg2rad(lat2-lat1);  // deg2rad below
+  var R = 6371; 
+  var dLat = deg2rad(lat2-lat1);  
   var dLon = deg2rad(lon2-lon1); 
   var a = 
     Math.sin(dLat/2) * Math.sin(dLat/2) +
@@ -108,7 +105,7 @@ function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
     Math.sin(dLon/2) * Math.sin(dLon/2)
     ; 
   var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-  var d = R * c; // Distance in km
+  var d = R * c; 
   return d;
 }
 
@@ -118,6 +115,13 @@ function deg2rad(deg) {
 
 async function handleGenerateClick() {
   const btn = document.getElementById('generate-btn');
+  const errorMsg = document.getElementById('error-msg');
+  const hintMsg = document.getElementById('hint-msg');
+  
+  // Сброс сообщений
+  errorMsg.style.display = 'none';
+  hintMsg.style.display = 'none';
+  
   const originalText = btn.innerHTML;
   btn.innerHTML = `<div class="spinner"></div> ${translations[currentLang].planning}`;
   btn.disabled = true;
@@ -125,9 +129,10 @@ async function handleGenerateClick() {
   try {
     await generateRoute();
     btn.style.display = 'none';
-    document.getElementById('hint-msg').style.display = 'block'; // Показываем подсказку
+    hintMsg.style.display = 'block'; 
   } catch (e) {
-    alert("AI Error: " + e.message);
+    console.error(e);
+    // Обработка ошибки
     btn.innerHTML = originalText;
     btn.disabled = false;
   }
@@ -135,6 +140,7 @@ async function handleGenerateClick() {
 
 async function generateRoute() {
   const isMountain = currentSettings.type === 'mountain';
+  const errorMsg = document.getElementById('error-msg');
   
   let radiusKm = 5;
   if (isMountain) {
@@ -159,17 +165,18 @@ async function generateRoute() {
   const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
   let rawPlaces = JSON.parse(text);
 
-  // ФИЛЬТРАЦИЯ ПО РАССТОЯНИЮ (Client Side Check)
-  // Мы даем небольшой буфер (1.2), так как карты могут чуть отличаться, но отсекаем явные ошибки
+  // ФИЛЬТРАЦИЯ
   if (!isMountain) {
       generatedPlaces = rawPlaces.filter(p => {
           const dist = getDistanceFromLatLonInKm(userLocation.lat, userLocation.lng, p.lat, p.lng);
           return dist <= (radiusKm * 1.5); 
       });
       
-      if (generatedPlaces.length === 0 && rawPlaces.length > 0) {
-          alert(`AI suggested places too far away (${rawPlaces.length} removed). Try increasing radius.`);
-          throw new Error("No places found within radius");
+      // ЕСЛИ НИЧЕГО НЕ НАШЛИ
+      if (generatedPlaces.length === 0) {
+          errorMsg.innerText = `No objects found within ${radiusKm} km ❌`;
+          errorMsg.style.display = 'block';
+          throw new Error("Filtered out all places"); // Останавливаем выполнение
       }
   } else {
       generatedPlaces = rawPlaces;
@@ -219,7 +226,6 @@ async function drawMap(places, isMountain) {
       allPointsBounds.push([place.lat, place.lng]);
       const icon = L.divIcon({ className: 'custom-div-icon', html: index + 1, iconSize: [30, 30] });
       
-      // ВАЖНО: Добавили кнопку GO HERE в попап
       const popupContent = `
           <div style="text-align:center;">
               <b>${place.name}</b><br>
