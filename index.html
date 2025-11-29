@@ -53,11 +53,13 @@
           <input type="number" id="radius-input" value="5" min="1" max="500">
       </div>
 
+      <!-- БЛОК ДЛЯ ОШИБОК -->
+      <div id="error-msg" class="error-msg" style="display: none;"></div>
+
       <button class="btn-create" id="generate-btn">
         <i class="fas fa-magic"></i> <span data-i18n="create">Create AI Route</span>
       </button>
 
-      <!-- Эта кнопка теперь только подсказка, действия происходят на карте -->
       <div id="hint-msg" style="display:none; color:#00b894; font-weight:600; text-align:center; padding:10px;">
           <i class="fas fa-hand-pointer"></i> Click on a marker to Start!
       </div>
