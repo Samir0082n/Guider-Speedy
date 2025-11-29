@@ -68,12 +68,24 @@ function selectOption(category, value, element) {
   element.classList.add('active');
 
   const transportCont = document.getElementById('transport-container');
+  const radiusCont = document.getElementById('radius-container');
+  const radiusInput = document.getElementById('radius-input');
+
+  // Логика переключения режима
+  if (category === 'mode') {
+      // Если выбрали пешком - ставим 5км, если авто - 20км (но пользователь может поменять)
+      if (value === 'walk') radiusInput.value = 5;
+      if (value === 'car') radiusInput.value = 20;
+  }
+
   if (category === 'type') {
     if (value === 'mountain') {
       transportCont.classList.add('hidden');
-      currentSettings.mode = 'walk'; // В горах лучше пешком (для примера)
+      radiusCont.classList.add('hidden'); // Прячем радиус для гор
+      currentSettings.mode = 'walk'; 
     } else {
       transportCont.classList.remove('hidden');
+      radiusCont.classList.remove('hidden'); // Показываем радиус
     }
   }
 }
@@ -97,7 +109,15 @@ async function handleGenerateClick() {
 
 async function generateRoute() {
   const isMountain = currentSettings.type === 'mountain';
-  const radiusKm = isMountain ? 300 : (currentSettings.mode === 'walk' ? 15 : 50);
+  
+  // Читаем радиус из инпута, если это не горы
+  let radiusKm = 5;
+  if (isMountain) {
+      radiusKm = 300; // Для гор фиксированный большой радиус
+  } else {
+      const inputVal = document.getElementById('radius-input').value;
+      radiusKm = inputVal ? parseInt(inputVal) : 5;
+  }
 
   let vibePrompt = "";
   if (isMountain) {
@@ -116,20 +136,17 @@ async function generateRoute() {
   drawMap(places, isMountain);
 }
 
-// ИЗМЕНЕННАЯ ФУНКЦИЯ: Рисует отдельные линии до каждой точки
+// Рисует отдельные линии до каждой точки
 async function drawMap(places, isMountain) {
-  // Очистка карты
   routeLayers.forEach(l => map.removeLayer(l));
   routeLayers = [];
   markerLayer.forEach(m => map.removeLayer(m));
   markerLayer = [];
 
-  const profile = (isMountain) ? 'driving' : 'walking'; // Или driving, если далеко
+  const profile = (isMountain) ? 'driving' : 'walking'; 
   const allPointsBounds = [[userLocation.lat, userLocation.lng]];
 
-  // Создаем массив промисов, чтобы загрузить все маршруты одновременно
   const routePromises = places.map(async (place, index) => {
-      // Строим маршрут: User -> Place (Отдельно для каждого)
       const url = `https://router.project-osrm.org/route/v1/${profile}/${userLocation.lng},${userLocation.lat};${place.lng},${place.lat}?overview=full&geometries=geojson`;
       
       try {
@@ -139,11 +156,8 @@ async function drawMap(places, isMountain) {
           if (data.routes && data.routes.length > 0) {
               const route = data.routes[0];
               const coordinates = route.geometry.coordinates.map(c => [c[1], c[0]]);
-              
-              // Выбираем цвет
               const color = GRADIENT_COLORS[index % GRADIENT_COLORS.length];
               
-              // Рисуем линию
               const polyline = L.polyline(coordinates, { 
                   color: color, 
                   weight: 5, 
@@ -152,7 +166,6 @@ async function drawMap(places, isMountain) {
               }).addTo(map);
               routeLayers.push(polyline);
 
-              // Если есть риск, ставим иконку посередине пути
               if (place.risk_level === 'high') {
                   const midPoint = coordinates[Math.floor(coordinates.length / 2)];
                   const dIcon = L.divIcon({ className: 'danger-icon', html: '<i class="fas fa-exclamation"></i>', iconSize: [24, 24] });
@@ -164,7 +177,6 @@ async function drawMap(places, isMountain) {
           console.error("Route error", e);
       }
 
-      // Добавляем маркер назначения
       allPointsBounds.push([place.lat, place.lng]);
       const icon = L.divIcon({ className: 'custom-div-icon', html: index + 1, iconSize: [30, 30] });
       const marker = L.marker([place.lat, place.lng], { icon: icon }).addTo(map)
@@ -172,10 +184,8 @@ async function drawMap(places, isMountain) {
       markerLayer.push(marker);
   });
 
-  // Ждем пока все маршруты построятся
   await Promise.all(routePromises);
 
-  // Центрируем карту
   if (allPointsBounds.length > 1) {
       map.fitBounds(L.latLngBounds(allPointsBounds), { padding: [50, 50] });
   }
