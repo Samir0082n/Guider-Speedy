@@ -175,7 +175,6 @@ body {
   box-shadow: 0 0 15px rgba(128, 128, 128, 0.2);
 }
 
-/* Mountain Mode Specific Style */
 .choice-btn[data-type="mountain"].active {
   background: linear-gradient(135deg, #2ecc71, #27ae60);
   color: white;
@@ -183,7 +182,7 @@ body {
   box-shadow: 0 0 20px rgba(46, 204, 113, 0.4);
 }
 
-/* RADIUS INPUT STYLE (NEW) */
+/* RADIUS INPUT STYLE */
 .radius-container {
     width: 100%;
     display: flex;
@@ -244,19 +243,25 @@ body {
   transform: scale(0.98);
 }
 
+/* Скрываем старую кнопку старт, так как теперь старт из попапа */
 .btn-start {
-  background: var(--accent-green) !important;
-  box-shadow: 0 10px 30px rgba(0, 184, 148, 0.4) !important;
-  animation: pulse-green 2s infinite;
+  display: none !important; 
 }
 
-@keyframes pulse-green {
-  0% { box-shadow: 0 0 0 0 rgba(0, 184, 148, 0.7); }
-  70% { box-shadow: 0 0 0 15px rgba(0, 184, 148, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(0, 184, 148, 0); }
+/* POPUP BUTTON (NEW) */
+.btn-popup {
+    background: var(--accent-green);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 15px;
+    width: 100%;
+    margin-top: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 184, 148, 0.3);
 }
 
-/* Custom Map Markers */
 .custom-div-icon {
   background: var(--accent);
   color: white;
@@ -268,7 +273,6 @@ body {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
 }
 
-/* Danger Icon on Route */
 .danger-icon {
   background: var(--danger);
   color: white;
