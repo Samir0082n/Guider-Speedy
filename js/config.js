@@ -1,5 +1,5 @@
 export const CONFIG = {
-    GEMINI_API_KEY: 'AIzaSyCNY4JNIVcTi2JMda_LonhTyULsZv2jzOM',
+    GEMINI_API_KEY: 'AIzaSyDs-duUjbpmxaiciRrcHcAHeytHWs3z6j0',
     ELEVENLABS_API_KEY: 'sk_572d97618d596745dd95d07d43525146642db435d9942fc4',
     ELEVENLABS_VOICE_ID: 'QxpsWUTZAxznFqyH1goJ'
 };
