@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
 import { CONFIG } from "./config.js";
 
-// 🗣️ СЛОВАРЬ: Тут мы храним слова на разных языках, чтобы приложение умело говорить
+// Тут мы храним слова на разных языках, чтобы приложение умело говорить
 // по-английски, по-азербайджански и по-русски.
 const translations = {
     en: { transport: "Transport", vibe: "Vibe", walk: "Walk", car: "Car", cultural: "Cultural", foodie: "Foodie", mountain: "Mountain", hidden: "Hidden", create: "Create Route", start: "Start", planning: "Planning...", weather_error: "Loc Error" },
@@ -21,13 +21,13 @@ let markerLayer = []; // Сюда складываем булавки (точк�
 let currentLang = 'en'; // Сейчас выбран английский язык.
 const GRADIENT_COLORS = ['#3a86ff', '#8338ec', '#ff006e', '#fb5607', '#ffbe0b']; // Набор фломастеров для рисования линий.
 
-// 🚀 СТАРТ: Когда страничка загрузилась...
+// Когда страничка загрузилась
 window.onload = async () => {
     initMap(); // 1. Рисуем карту.
     initAI();  // 2. Будим Умного Робота.
     setupEventListeners(); // 3. Начинаем слушать нажатия кнопок.
     
-    // 🛰️ СПРАШИВАЕМ СПУТНИК: "Где я?"
+    // получаем геолокации
     // Мы просим самую точную позицию (enableHighAccuracy: true).
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(successLoc, errorLoc, {
@@ -43,20 +43,20 @@ window.onload = async () => {
         const clickedPlace = window.validPlacesList[index];
         if (!clickedPlace) return; // Если места нет, ничего не делаем.
 
-        // 🎒 СОБИРАЕМ РЮКЗАК:
-        // Кладем выбранное место в коробочку 'activeRoute', чтобы передать на другую страницу.
+        // 
+        // сохряняем выбранное место с помощю activeRoute и передаем на другую страницу
         const newPlaces = [clickedPlace];
         localStorage.setItem('activeRoute', JSON.stringify({ 
             places: newPlaces, 
             mode: currentSettings.mode 
         }));
         
-        // 🚪 ПЕРЕХОД: Открываем страницу с голосовым навигатором.
+        //  Открываем страницу с голосовым навигатором.
         window.location.href = 'voice.html';
     };
 };
 
-// 🗺️ РИСОВАНИЕ КАРТЫ
+// КАРТЫ
 function initMap() {
     // Создаем карту и ставим камеру на координаты пользователя.
     map = L.map('map', { zoomControl: false }).setView([userLocation.lat, userLocation.lng], 13);
@@ -66,15 +66,15 @@ function initMap() {
     }).addTo(map);
 }
 
-// 🤖 БУДИМ РОБОТА
+// Запускаем ИИ
 function initAI() {
-    // Даем роботу ключ, чтобы он открыл дверь в мир знаний Google.
+    // Даем ии ключ, чтобы он мог получить данные с сети 
     genAI = new GoogleGenerativeAI(CONFIG.GEMINI_API_KEY);
     // Выбираем модель робота (gemini-2.0-flash - он быстрый как молния).
     model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 }
 
-// 👂 СЛУШАЕМ КНОПКИ
+// Кнопки интерфейса
 function setupEventListeners() {
     document.getElementById('lang-select').onchange = changeLanguage; // Смена языка
     document.getElementById('theme-btn').onclick = toggleTheme;       // Смена темы (день/ночь)
@@ -86,7 +86,7 @@ function setupEventListeners() {
     });
 }
 
-// ✅ ЕСЛИ СПУТНИК НАШЕЛ НАС
+// ЕСЛИ СПУТНИК НАШЕЛ НАС
 function successLoc(pos) {
     // Записываем координаты.
     userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
@@ -104,10 +104,10 @@ function successLoc(pos) {
     getWeather(); // Сразу узнаем погоду.
 }
 
-// ❌ ЕСЛИ СПУТНИК ПОТЕРЯЛСЯ
+// если не найдет локацию
 function errorLoc() { document.getElementById('weather-display').innerText = "GPS Error"; }
 
-// ⛅ УЗНАЕМ ПОГОДУ У РОБОТА
+// УЗНАЕМ ПОГОДУ 
 async function getWeather() {
     try {
         // Спрашиваем: "Какая погода в этих координатах? Ответь коротко."
@@ -117,7 +117,7 @@ async function getWeather() {
     } catch (e) { }
 }
 
-// 🎛️ КОГДА НАЖИМАЕШЬ КНОПКИ ВЫБОРА (МАШИНА ИЛИ ПЕШКОМ)
+// КОГДА НАЖИМАЕШЬ КНОПКИ ВЫБОРА (МАШИНА ИЛИ ПЕШКОМ)
 function selectOption(category, value, element) {
     currentSettings[category] = value; // Запоминаем выбор.
     
@@ -128,7 +128,7 @@ function selectOption(category, value, element) {
 
     const radiusInput = document.getElementById('radius-input');
 
-    // Если выбрали "Пешком", ставим радиус поменьше (3 км), чтобы не устать.
+    // Если выбрали "Пешком", ставим радиус поменьше (6 км), чтобы не устать.
     // Если "Машина", ставим побольше (15 км).
     if (category === 'mode') {
         if (value === 'walk') radiusInput.value = 3; 
@@ -159,7 +159,7 @@ function showError(msg) {
     setTimeout(() => { errDiv.style.display = 'none'; }, 5000); // Через 5 секунд прячем.
 }
 
-// ✨ ГЛАВНАЯ МАГИЯ: КНОПКА "СОЗДАТЬ МАРШРУТ"
+// КНОПКА "СОЗДАТЬ МАРШРУТ"
 async function handleGenerateClick() {
     const btn = document.getElementById('generate-btn');
     const originalText = btn.innerHTML;
@@ -180,13 +180,13 @@ async function handleGenerateClick() {
     }
 }
 
-// 🧠 МОЗГ ПРИЛОЖЕНИЯ
+// Логика
 async function generateRoute() {
     const isMountain = currentSettings.type === 'mountain';
     // Берем радиус из настройки.
     let radiusKm = isMountain ? 300 : parseInt(document.getElementById('radius-input').value) || 5;
 
-    // Готовим письмо для Робота (Промпт).
+    // Готовим запррос аи (Промпт).
     // Мы просим его представить, что он гид, и найти места рядом с нами.
     let vibePrompt = isMountain 
         ? `MODE: MOUNTAIN EXPEDITION. SEARCH Greater Caucasus Mountains. Suggest 4 distinct accessible locations.` 
@@ -222,7 +222,7 @@ async function generateRoute() {
         });
     }
 
-    // 🕵️ ПРОВЕРКА 2: ЕСТЬ ЛИ ТУДА ДОРОГА? (OSRM)
+    //  ПРОВЕРКА : ЕСТЬ ЛИ ТУДА ДОРОГА? (OSRM)
     // Робот может предложить точку в центре океана или в глухом лесу.
     // Мы спрашиваем дорожный сервис (OSRM): "Можно туда дойти?"
     const validPlaces = [];
