@@ -71,7 +71,7 @@ function initAI() {
     // Даем ии ключ, чтобы он мог получить данные с сети 
     genAI = new GoogleGenerativeAI(CONFIG.GEMINI_API_KEY);
     // Выбираем модель робота (gemini-2.0-flash - он быстрый как молния).
-    model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 }
 
 // Кнопки интерфейса
