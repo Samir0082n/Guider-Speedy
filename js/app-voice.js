@@ -380,7 +380,7 @@ async function initVAD() {
 // 💬 БОЛТАЛКА С GEMINI
 async function initGemini() {
     const gen = new GoogleGenerativeAI(CONFIG.GEMINI_API_KEY);
-    const model = gen.getGenerativeModel({ model: "gemini-2.0-flash-lite", systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] } });
+    const model = gen.getGenerativeModel({ model: "gemini-2.5-flash-lite", systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] } });
     STATE.chat = model.startChat();
 }
 
